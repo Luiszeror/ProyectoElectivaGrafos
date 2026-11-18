@@ -78,18 +78,44 @@ const ampliable = (titulo, fabrica) => h('div', { class: 'ampliable' },
 const lista = (items) => h('ul', { class: 'explica' }, items.map(t => h('li', {}, t)));
 const mono = (t) => h('code', {}, t);
 
-async function vistaModelos(cont) {
-  cont.replaceChildren(h('p', { class: 'vacio' }, 'Leyendo la estructura de las dos bases…'));
-  const m = await intentar(() => api('/api/admin/modelos'));
-  if (!m) return;
-  const err = (x) => x && x.error ? h('p', { class: 'motivo' }, 'No se pudo leer: ' + x.error) : null;
+/* Cada mitad se pide por separado y se pinta en cuanto llega: una base lenta o caída no bloquea a la otra,
+   y un fallo se muestra en pantalla con un botón para reintentar (antes la pantalla se quedaba en «Leyendo…»). */
+function cargarMitad(caja, url, armar, nombre) {
+  const aviso = (t) => h('p', { class: 'vacio', role: 'status' }, t);
+  const pedir = async () => {
+    const cab = Array.from(caja.querySelectorAll(':scope > h2, :scope > h3'))[0];
+    caja.replaceChildren(...(cab ? [cab] : []), aviso(`Leyendo la estructura de ${nombre}…`));
+    const t0 = performance.now();
+    const lento = setTimeout(() => caja.append(aviso('Sigue leyendo… si usas Neo4j Aura, la primera consulta puede tardar unos segundos.')), 4000);
+    try {
+      const r = await api(url);
+      clearTimeout(lento);
+      if (r && r.error) throw new Error(r.error);
+      const nueva = armar(r);
+      if (nueva.tagName === 'SECTION') caja.replaceChildren(...nueva.childNodes); else caja.replaceChildren(nueva);
+    } catch (e) {
+      clearTimeout(lento);
+      caja.replaceChildren(...(cab ? [cab] : []), h('p', { class: 'motivo' }, `No se pudo leer ${nombre}: ${e.message}`),
+        h('button', { class: 'sec small', onclick: pedir }, 'Reintentar'));
+    }
+  };
+  pedir();
+}
 
-  /* ------------------------------ mitad PostgreSQL */
-  const pg = m.postgres;
-  const izq = h('section', { class: 'mitad pg modelos' }, h('h2', {}, 'PostgreSQL · modelo relacional'),
+async function vistaModelos(cont) {
+  const izq = h('section', { class: 'mitad pg modelos' }, h('h2', {}, 'PostgreSQL · modelo relacional'));
+  const der = h('section', { class: 'mitad neo modelos' }, h('h2', {}, 'Neo4j · modelo de grafo'));
+  const abajo = h('div', { style: 'margin-top:1rem' });
+  cont.replaceChildren(h('div', { class: 'partida delgada' }, izq, h('div', { class: 'centro' }), der), abajo);
+  cargarMitad(izq, '/api/admin/modelos/postgres', armarPg, 'PostgreSQL');
+  cargarMitad(der, '/api/admin/modelos/neo4j', armarNeo, 'Neo4j');
+  cargarMitad(abajo, '/api/admin/modelos/ejemplo', armarEjemplo, 'el ejemplo');
+}
+
+function armarPg(pg) {
+  return h('section', { class: 'mitad pg modelos' }, h('h2', {}, 'PostgreSQL · modelo relacional'),
     h('p', { class: 'explica' }, 'La información se guarda en tablas con columnas tipadas. Cada hecho vive en un solo lugar (tercera forma normal) y las relaciones entre cosas se expresan con llaves foráneas; para recorrerlas se hacen JOIN.'),
-    err(pg),
-    !pg.error ? [
+    [
       h('h4', {}, 'Diagrama entidad-relación'), ampliable('Diagrama entidad-relación', () => diagramaER(pg.tablas)),
       h('p', { class: 'dato-et' }, 'PK = llave primaria · FK = llave foránea · la flecha apunta a la tabla referenciada · línea punteada = tabla derivada que se recalcula.'),
       h('h4', {}, 'Cómo se representan las relaciones'),
@@ -111,14 +137,15 @@ async function vistaModelos(cont) {
       lista(['Cada PK crea un índice único automáticamente (búsqueda por id en O(log n)).', 'idx_matricula_curso (codigo_curso, estado): cuenta aprobados por curso y cupos.',
         'idx_curso_area_area, idx_interes_area: unen cursos con áreas sin recorrer toda la tabla.', 'idx_prerreq_req: encuentra quién depende de un curso.',
         'idx_curso_sede_periodo: filtra lo que se ofrece en el periodo actual.', 'Después de cargar se ejecuta ANALYZE para que el planificador conozca el tamaño real de cada tabla.']),
-      h('details', {}, h('summary', {}, 'Ver el DDL completo'), code(pg.ddl))] : null);
+      h('details', {}, h('summary', {}, 'Ver el DDL completo'), code(pg.ddl))]);
 
   /* ------------------------------ mitad Neo4j */
-  const ne = m.neo4j;
-  const der = h('section', { class: 'mitad neo modelos' }, h('h2', {}, 'Neo4j · modelo de grafo'),
+}
+
+function armarNeo(ne) {
+  return h('section', { class: 'mitad neo modelos' }, h('h2', {}, 'Neo4j · modelo de grafo'),
     h('p', { class: 'explica' }, 'La información se guarda como nodos (cosas) y relaciones (conexiones con nombre y dirección) que ya vienen unidas. Para recorrer una conexión no se calcula un JOIN: se sigue el enlace directo entre nodos.'),
-    err(ne),
-    !ne.error ? [
+    [
       h('h4', {}, 'Esquema de nodos y relaciones'), ampliable('Esquema de nodos y relaciones', () => diagramaGrafo(ne.relaciones)),
       h('p', { class: 'dato-et' }, 'Línea continua = relación guardada · punteada = relación derivada (SIMILAR_A se calcula a partir de las áreas compartidas).'),
       h('h4', {}, 'Cómo se representan las cosas'),
@@ -136,14 +163,14 @@ async function vistaModelos(cont) {
       ne.indices.length ? tabla([{ t: 'Nombre', f: x => x.name }, { t: 'Tipo', f: x => x.type }, { t: 'Sobre', f: x => `${x.labelsOrTypes.join(':')}(${x.properties.join(', ')})` }, { t: 'Estado', f: x => x.state }], ne.indices) : null,
       lista(['Una restricción UNIQUE por clave de nodo (id o código) garantiza que no haya duplicados y crea su índice.', 'Los índices solo se usan para ENCONTRAR el nodo de inicio (p. ej. el estudiante E1); desde ahí el recorrido sigue relaciones sin índices.',
         'hc_estado y hc_periodo indexan propiedades de la relación HA_CURSADO para filtrar por estado o periodo.']),
-      h('details', {}, h('summary', {}, 'Ver el Cypher que crea las restricciones e índices'), code(ne.cypher_esquema))] : null);
+      h('details', {}, h('summary', {}, 'Ver el Cypher que crea las restricciones e índices'), code(ne.cypher_esquema))]);
 
   /* ------------------------------ ejemplo lado a lado */
-  const ej = m.ejemplo;
-  const ejemplo = ej && !ej.error ? h('div', { class: 'caja' }, h('h3', {}, `El mismo dato en las dos bases: ${ej.estudiante} aprobó ${ej.curso}`),
+}
+
+function armarEjemplo(ej) {
+  return h('div', { class: 'caja' }, h('h3', {}, `El mismo dato en las dos bases: ${ej.estudiante} aprobó ${ej.curso}`),
     h('div', { class: 'dos' },
       h('div', {}, h('h4', {}, 'PostgreSQL: una fila de matricula'), code(JSON.stringify(ej.postgres, null, 2))),
-      h('div', {}, h('h4', {}, 'Neo4j: la relación HA_CURSADO entre dos nodos'), code(JSON.stringify(ej.neo4j, null, 2))))) : err(ej);
-
-  cont.replaceChildren(h('div', { class: 'partida delgada' }, izq, h('div', { class: 'centro' }), der), h('div', { style: 'margin-top:1rem' }, ejemplo));
+      h('div', {}, h('h4', {}, 'Neo4j: la relación HA_CURSADO entre dos nodos'), code(JSON.stringify(ej.neo4j, null, 2)))));
 }

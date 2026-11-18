@@ -152,3 +152,29 @@ details{margin:.4rem 0} summary{cursor:pointer;font-weight:600;color:var(--muted
 
 @media(min-width:901px){.partida.delgada{grid-template-columns:minmax(0,1fr) 1.2rem minmax(0,1fr)}}
 @media(max-width:900px){.barra{flex-wrap:wrap;gap:.5rem}.barra .quien{margin-left:0}.tab{padding:.35rem .6rem}}
+
+/* ---------- comparación: elegir pregunta y condiciones de justicia */
+.paso{margin:1rem 0 .5rem}
+.niveles{align-items:start;display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.9rem;margin:.4rem 0}
+.grupo-nivel h4{margin:0 0 .4rem;font-size:.85rem;color:var(--muted);letter-spacing:.02em}
+.grupo-nivel .opciones{display:flex;flex-direction:column;gap:.4rem}
+.opcion{display:flex;flex-direction:column;align-items:flex-start;gap:.15rem;text-align:left;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:.55rem .7rem;font:inherit;cursor:pointer}
+.opcion b{font-size:.92rem} .opcion span{font-size:.8rem;color:var(--muted);font-weight:400}
+.opcion:hover{border-color:var(--grafo)}
+.opcion.on{border-color:var(--grafo);background:var(--grafo-bg);box-shadow:inset 4px 0 0 var(--grafo)}
+.opcion:focus-visible{outline:3px solid var(--grafo);outline-offset:2px}
+.detalle-pregunta{margin-top:.6rem;padding:.7rem .9rem;border-radius:8px;background:var(--soft);max-width:80ch}
+.detalle-pregunta p{margin:.2rem 0}
+.justicia{display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem}
+.justicia .grupo{display:flex;flex-direction:column;gap:.6rem;padding:.8rem;border:1px solid var(--line);border-radius:8px}
+.justicia .grupo h4{margin:0;font-size:.9rem}
+.justicia label{display:flex;flex-direction:column;gap:.2rem;font-size:.85rem;font-weight:600}
+.justicia label.check{flex-direction:row;align-items:flex-start;gap:.5rem;font-weight:400}
+.justicia label.check input{margin-top:.2rem}
+.check b{display:block;font-weight:600} .check small{display:block;color:var(--muted);font-size:.78rem}
+label.check{display:flex;gap:.5rem;align-items:flex-start;font-size:.85rem}
+.grande-btn{font-size:1.02rem;padding:.65rem 1.3rem}
+.desglose{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--soft);margin:.3rem 0 .2rem}
+.desglose .seg.motor{background:var(--ink)} .desglose .seg.red{background:repeating-linear-gradient(45deg,#b8c1d1,#b8c1d1 4px,#dfe4ee 4px,#dfe4ee 8px)}
+.chips{display:flex;gap:.4rem;flex-wrap:wrap;width:100%}
+.ganador-txt{display:flex;flex-direction:column;gap:.2rem;flex:1 1 22rem}

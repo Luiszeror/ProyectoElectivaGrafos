@@ -278,8 +278,14 @@ NEO_MUESTRA_NODO = {
     e: f"MATCH (n:{e}) WHERE n.sintetico IS NULL RETURN properties(n) AS props LIMIT 1" for e in
     ("Estudiante", "Docente", "Curso", "Programa", "Facultad", "Sede", "Area")
 }
-NEO_MUESTRA_REL = """MATCH (a)-[r]->(b) WHERE type(r) = $tipo AND a.sintetico IS NULL
-RETURN properties(r) AS props, labels(a)[0] AS de, labels(b)[0] AS a LIMIT 1"""
+def neo_muestra_rel(tipo: str) -> str:
+    """Una relación de ejemplo de ese tipo. El tipo va en el patrón (no en un WHERE type(r) = $t) para que
+    Neo4j use el índice de tipos de relación en vez de recorrer todas las relaciones del grafo."""
+    assert tipo.replace("_", "").isalnum(), tipo
+    return (f"MATCH (a)-[r:`{tipo}`]->(b) WHERE a.sintetico IS NULL "
+            "RETURN properties(r) AS props, labels(a)[0] AS de, labels(b)[0] AS a LIMIT 1")
+
+
 NEO_EJEMPLO_MATRICULA = """MATCH (e:Estudiante {id: $est})-[h:HA_CURSADO]->(c:Curso {codigo: $curso})
 RETURN e.id AS estudiante, c.codigo AS curso, properties(h) AS relacion ORDER BY h.periodo LIMIT 1"""
 NEO_MATRICULA_REAL = """MATCH (e:Estudiante)-[h:HA_CURSADO {estado: 'APROBADO'}]->(c:Curso)

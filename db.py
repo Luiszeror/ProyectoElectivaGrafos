@@ -168,15 +168,24 @@ def pg_exec(sql: str, params: Optional[Union[dict, tuple]] = None) -> None:
         conn.execute(sql, params)
 
 
-def pg_timed(sql: str, params: dict) -> dict:
-    """Ejecuta una lectura en PostgreSQL. La base es local: no hay red de por medio."""
+def pg_timed(sql: str, params: dict, red_ms: float = 0.0) -> dict:
+    """Ejecuta una lectura en PostgreSQL.
+
+    La base es local, así que no hay red de por medio. Para una comparación justa con Aura (que está en
+    la nube) se puede simular la ida y vuelta de red con `red_ms`: se espera ese tiempo de verdad y se
+    suma al tiempo total, pero NO al tiempo del motor.
+    """
     p = pool()
+    t_total = time.perf_counter()
+    if red_ms > 0:
+        time.sleep(red_ms / 1000.0)
     with p.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         t0 = time.perf_counter()
         cur.execute(sql, params)
         rows = cur.fetchall()
         ms = (time.perf_counter() - t0) * 1000
-    return {"rows": rows, "motor_ms": ms, "total_ms": ms}
+    total = (time.perf_counter() - t_total) * 1000
+    return {"rows": rows, "motor_ms": ms, "total_ms": max(total, ms)}
 
 
 def pg_explain(sql: str, params: dict) -> list[str]:

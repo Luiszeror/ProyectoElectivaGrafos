@@ -110,6 +110,17 @@ class Ref:
                 pts[b] += 1
         return [{"codigo": k, "nombre": self.nombre_est[k], "puntaje": v} for k, v in self._top(pts)]
 
+    def historial_estudiante(self, e):
+        filas = sorted((c, per, n) for ee, c, per, n, st in self.d.matricula if ee == e and st == "APROBADO")
+        return [{"codigo": c, "nombre": self.nombre_curso[c], "periodo": per, "nota": float(n)} for c, per, n in filas]
+
+    def companeros_1(self, e):
+        cursos_de = defaultdict(set)
+        for ee, c, *_ in self.d.matricula:
+            cursos_de[ee].add(c)
+        pts = {o: float(len(cs & cursos_de[e])) for o, cs in cursos_de.items() if o != e and cs & cursos_de[e]}
+        return [{"codigo": k, "nombre": self.nombre_est[k], "puntaje": v} for k, v in self._top(pts)]
+
     def mas_aprobados(self):
         n = defaultdict(int)
         for _, c, _, _, s in self.d.matricula:
@@ -127,4 +138,6 @@ class Ref:
             "cadena_prerreq": lambda: self.cadena_prerreq(sujeto),
             "companeros_2": lambda: self.companeros_2(sujeto),
             "mas_aprobados": lambda: self.mas_aprobados(),
+            "historial_estudiante": lambda: self.historial_estudiante(sujeto),
+            "companeros_1": lambda: self.companeros_1(sujeto),
         }[esc_id]()

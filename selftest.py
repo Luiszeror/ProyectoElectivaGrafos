@@ -6,8 +6,11 @@ respondan lo mismo en cada escenario.
 1) Para CADA consulta de queries.py ejecuta EXPLAIN (revisa sintaxis y esquema sin modificar datos).
 2) Ejecuta los 8 escenarios en Neo4j y en PostgreSQL y compara resultados (necesita PostgreSQL sincronizado).
 """
+import logging
 import re
 import sys
+
+logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)   # avisos "propiedad no existe" son normales sin datos de volumen
 
 import config
 import db

@@ -19,8 +19,9 @@ router = APIRouter(prefix="/api/admin", dependencies=[Depends(admin_actual)])
 # ------------------------------------------------------------------ escenarios y muestras
 @router.get("/comparar/escenarios")
 def escenarios():
-    return [{k: e[k] for k in ("id", "titulo", "tema", "pregunta", "sujeto", "cypher", "sql", "cols")}
-            | {"sql_mat": e["sql_mat"]} for e in S.ESCENARIOS]
+    claves = ("id", "titulo", "tema", "pregunta", "sujeto", "cypher", "sql", "sql_mat", "cols",
+              "nivel", "nivel_nombre", "que_mide", "que_esperar")
+    return [{k: e[k] for k in claves} for e in S.ESCENARIOS]
 
 
 @router.get("/comparar/muestra")
@@ -46,15 +47,56 @@ def _stats(xs: list[float]) -> dict:
             "max": round(xs[-1], 3), "p95": round(xs[min(len(xs) - 1, int(len(xs) * 0.95))], 3)}
 
 
-def _medir(fn, reps: int) -> dict:
-    fn()  # calentamiento: llena cachés y planes; no se cuenta
-    motor, total, ultimo = [], [], None
-    for _ in range(reps):
-        ultimo = fn()
-        motor.append(ultimo["motor_ms"])
-        total.append(ultimo["total_ms"])
+def _resumir(ultimo: dict, motor: list, total: list) -> dict:
     return {"motor": _stats(motor), "total": _stats(total), "muestras": [round(x, 3) for x in total],
+            "muestras_motor": [round(x, 3) for x in motor],
             "filas": len(ultimo["rows"]), "resultado": ultimo["rows"][:20]}
+
+
+def _medir_ambas(fn_neo, fn_pg, reps: int, calentar: bool, intercalar: bool) -> tuple:
+    """Mide las dos bases en las MISMAS condiciones.
+
+    - calentar: una ejecución previa que no cuenta (llena cachés y planes) en cada base.
+    - intercalar: en cada repetición alterna quién va primero (N, P, P, N, …) para que cualquier
+      variación del equipo (CPU, red, otras tareas) afecte por igual a las dos.
+    """
+    if calentar:
+        fn_neo()
+        fn_pg()
+    mn, tn, mp, tp, un, up = [], [], [], [], None, None
+    for i in range(reps):
+        orden = ("n", "p") if (not intercalar or i % 2 == 0) else ("p", "n")
+        for quien in orden:
+            if quien == "n":
+                un = fn_neo()
+                mn.append(un["motor_ms"]); tn.append(un["total_ms"])
+            else:
+                up = fn_pg()
+                mp.append(up["motor_ms"]); tp.append(up["total_ms"])
+    return _resumir(un, mn, tn), _resumir(up, mp, tp)
+
+
+_RTT = {"t": 0.0, "v": None}
+
+
+def _latencia_neo(forzar: bool = False) -> dict:
+    """Ida y vuelta de red hasta Neo4j: tiempo visto desde la app menos el tiempo que dice el motor."""
+    import time
+    if not forzar and _RTT["v"] and time.time() - _RTT["t"] < 60:
+        return _RTT["v"]
+    dif, tot = [], []
+    db.neo_timed("RETURN 1 AS x", {})
+    for _ in range(7):
+        r = db.neo_timed("RETURN 1 AS x", {})
+        dif.append(max(r["total_ms"] - r["motor_ms"], 0.0)); tot.append(r["total_ms"])
+    v = {"red_ms": round(statistics.median(dif), 1), "consulta_vacia_ms": round(statistics.median(tot), 1)}
+    _RTT.update(t=time.time(), v=v)
+    return v
+
+
+@router.get("/comparar/latencia")
+def latencia():
+    return _latencia_neo(forzar=True)
 
 
 def _params(esc: dict, sujeto) -> dict:
@@ -76,14 +118,34 @@ def ejecutar(body: dict):
     sujeto = body.get("sujeto") if esc["sujeto"] != "ninguno" else None
     if esc["sujeto"] != "ninguno":
         sujeto = dm.texto(sujeto, "sujeto", largo=20)
+    # ---- variables de justicia
+    metrica = "motor" if body.get("metrica") == "motor" else "total"
+    red_modo = body.get("red_pg") if body.get("red_pg") in ("ninguna", "igualar", "manual") else "igualar"
+    calentar = body.get("calentar") is not False
+    intercalar = body.get("intercalar") is not False
+    if red_modo == "igualar":
+        red_ms = _latencia_neo()["red_ms"]
+    elif red_modo == "manual":
+        red_ms = float(dm.entero(body.get("red_pg_ms") or 0, "red_pg_ms", 0, 1000))
+    else:
+        red_ms = 0.0
     p = _params(esc, sujeto)
-    neo = _medir(lambda: db.neo_timed(esc["cypher"], p), reps)
-    pg = _medir(lambda: db.pg_timed(esc[variante], p), reps)
+    neo, pg = _medir_ambas(lambda: db.neo_timed(esc["cypher"], p), lambda: db.pg_timed(esc[variante], p, red_ms),
+                           reps, calentar, intercalar)
     iguales = S.equivalentes(neo["resultado"], pg["resultado"], esc["cols"])
+    tn, tp = neo[metrica]["mediana"], pg[metrica]["mediana"]
+    gana = "neo4j" if tn < tp else "postgres" if tp < tn else "empate"
+    razon = round(max(tn, tp) / max(min(tn, tp), 0.001), 2)
     return {"escenario": esc["id"], "sujeto": sujeto, "variante": variante, "repeticiones": reps,
             "neo4j": neo, "postgres": pg, "equivalentes": iguales,
-            "nota_tiempos": "Neo4j Aura está en la nube y PostgreSQL es local: compara «motor» (tiempo interno) "
-                            "y recuerda que «total» de Neo4j incluye la red hasta Aura."}
+            "veredicto": {"metrica": metrica, "ganador": gana, "veces": razon,
+                          "empate_tecnico": razon < 1.15 or max(tn, tp) < 3.0},
+            "justicia": {"metrica": metrica, "red_pg": red_modo, "red_pg_ms": red_ms, "calentar": calentar,
+                         "intercalar": intercalar, "variante": variante, "repeticiones": reps,
+                         "datos": "volumen" if body.get("alcance") == "volumen" else "base"},
+            "nota_tiempos": ("«Motor» es el tiempo que la base tarda en resolver la consulta; «Total» es lo que "
+                             "espera la aplicación (motor + red). Neo4j Aura está en la nube, PostgreSQL es local"
+                             + (f", por eso se le sumaron {red_ms:g} ms simulados de red." if red_ms else "."))}
 
 
 # ------------------------------------------------------------------ planes de ejecución

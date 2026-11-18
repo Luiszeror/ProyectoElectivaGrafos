@@ -9,7 +9,7 @@ del mismo proyecto, usada para comparar rendimiento y explicar el modelo).
   repetir lo perdido), intereses, recomendaciones (historial, intereses, otros programas, estudiantes similares),
   áreas fuertes/por explorar y su red en el grafo.
 - **Administrador** (4 pestañas):
-  1. *Comparación en vivo*: pantalla partida PostgreSQL | Neo4j, 8 preguntas de negocio en Cypher y SQL, medición con
+  1. *Comparación en vivo*: pantalla partida PostgreSQL | Neo4j, 10 preguntas de negocio (de «búsqueda simple» a «recorrido profundo») en Cypher y SQL, medición con
      calentamiento y repeticiones, verificación de que ambos devuelven lo mismo, planes de ejecución
      (PROFILE / EXPLAIN ANALYZE), modo "repetir en vivo", y generador de datos de volumen.
   2. *Profesores y materias*: CRUD de docentes, cursos (áreas, programas, requisitos, sedes/cupos, docentes),
@@ -55,3 +55,11 @@ Cypher contra tu base real.
 ## Estructura
 `app.py` · `routers/` (auth, student, manage, compare, models) · `queries.py` (todo el Cypher) · `scenarios.py` (Cypher y SQL
 equivalentes) · `loaders.py` (DDL de PostgreSQL, sincronización, volumen) · `dataset.py` · `domain.py` (reglas) · `static/` (interfaz; `static/vendor/` trae vis-network 9.1.9, licencia MIT, para no depender de internet).
+
+
+## Comparación justa (variables de justicia)
+PostgreSQL corre en tu equipo y Aura en la nube; sin ajustes PostgreSQL gana solo por no tener red. En la pestaña
+de comparación puedes: **igualar la red** (se mide la ida y vuelta a Aura y se le simula a PostgreSQL con una espera
+real, que cuenta en el tiempo *total* pero no en el del *motor*), elegir qué tiempo decide (total o motor),
+calentar antes de medir, alternar quién se ejecuta primero y usar `curso_similar` precalculada. Si la diferencia es
+menor a 1,15× (o ambas tardan menos de 3 ms) se declara «empate técnico».

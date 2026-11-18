@@ -349,7 +349,7 @@ class Fake:
                 tabla = {"Estudiante": d.estudiante, "Docente": d.docente, "Curso": d.curso, "Programa": d.programa,
                          "Facultad": d.facultad, "Sede": d.sede, "Area": d.area}[et]
                 return [{"props": {"id": tabla[0][0], "nombre": tabla[0][1]}}] if tabla else []
-        if q == Q.NEO_MUESTRA_REL:
+        if q.startswith("MATCH (a)-[r:`"):
             return [{"props": {}, "de": "Estudiante", "a": "Curso"}]
         if q == Q.NEO_MATRICULA_REAL:
             m = next((m for m in d.matricula if m[4] == "APROBADO" and m[0] not in self.sint), None)
@@ -395,6 +395,8 @@ class Fake:
                 filas.append({"rid": f"{tipo}:{a[1]}:{b[1]}:{rp.get('periodo', '')}", "tipo": tipo, "rp": rp, "aid": ai, "al": al, "ap": ap,
                               "bid": bi, "bl": bl, "bp": bp})
             return filas[: p["limite"]]
+        if q.strip() == "RETURN 1 AS x":
+            return [{"x": 1}]
         # --- escenarios de comparación
         for esc in S.ESCENARIOS:
             if q == esc["cypher"]:

@@ -218,7 +218,7 @@ def test_estado_y_sincronizacion(c):
 def test_comparacion_todos_los_escenarios(c):
     a = login_admin(c)
     esc = c.get("/api/admin/comparar/escenarios", headers=a).json()
-    assert len(esc) == 8
+    assert len(esc) == 10 and {e["nivel"] for e in esc} == {1, 2, 3, 4} and all(e["que_mide"] for e in esc)
     for e in esc:
         s = c.get("/api/admin/comparar/muestra", params={"sujeto": e["sujeto"], "alcance": "base"}, headers=a).json()["id"]
         for var in (["sql", "sql_mat"] if e["sql_mat"] else ["sql"]):
@@ -305,3 +305,30 @@ def test_cypher_libre_solo_lectura(c):
     assert c.post("/api/admin/cypher", json={"query": "MATCH (n) WHERE n.nombre = 'set create' RETURN n"}, headers=a).status_code == 200
     assert c.post("/api/admin/cypher", json={"query": "MATCH BOOM"}, headers=a).status_code == 400
     assert c.post("/api/admin/cypher", json={"query": "  "}, headers=a).status_code == 422
+
+
+def test_comparacion_variables_de_justicia(c):
+    a = login_admin(c)
+    lat = c.get("/api/admin/comparar/latencia", headers=a).json()
+    assert lat["red_ms"] >= 0
+    base = {"escenario": "mas_aprobados", "repeticiones": 4}
+    sin = c.post("/api/admin/comparar/ejecutar", json={**base, "red_pg": "ninguna"}, headers=a).json()
+    con = c.post("/api/admin/comparar/ejecutar", json={**base, "red_pg": "manual", "red_pg_ms": 40}, headers=a).json()
+    assert sin["justicia"]["red_pg_ms"] == 0 and con["justicia"]["red_pg_ms"] == 40
+    # la red simulada se suma al tiempo total de PostgreSQL pero no al del motor
+    assert con["postgres"]["total"]["mediana"] >= 40 and con["postgres"]["motor"]["mediana"] < 40
+    assert sin["postgres"]["total"]["mediana"] < 40
+    assert con["veredicto"]["ganador"] in ("neo4j", "postgres", "empate") and con["equivalentes"] is True
+    m = c.post("/api/admin/comparar/ejecutar", json={**base, "metrica": "motor", "intercalar": False, "calentar": False}, headers=a).json()
+    assert m["justicia"]["metrica"] == "motor" and m["justicia"]["calentar"] is False and len(m["neo4j"]["muestras"]) == 4
+    assert c.post("/api/admin/comparar/ejecutar", json={**base, "red_pg": "manual", "red_pg_ms": 99999}, headers=a).status_code == 422
+
+
+def test_modelos_por_mitades(c):
+    a = login_admin(c)
+    pg = c.get("/api/admin/modelos/postgres", headers=a).json()
+    ne = c.get("/api/admin/modelos/neo4j", headers=a).json()
+    ej = c.get("/api/admin/modelos/ejemplo", headers=a).json()
+    assert len(pg["tablas"]) >= 15 and len(ne["nodos"]) == 7 and ne["relaciones"] and "error" not in ej
+    todo = c.get("/api/admin/modelos", headers=a).json()
+    assert set(todo) == {"postgres", "neo4j", "ejemplo"}

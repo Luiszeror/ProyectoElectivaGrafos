@@ -202,6 +202,77 @@ LIMIT 10""",
         "cols": ["codigo", "aprobados"],
     },
 ]
+
+_NUEVOS = [
+    {
+        "id": "historial_estudiante",
+        "titulo": "Ver las materias aprobadas de un estudiante",
+        "tema": "Búsqueda simple",
+        "pregunta": "¿Qué materias aprobó este estudiante, en qué periodo y con qué nota?",
+        "sujeto": "estudiante",
+        "cypher": """MATCH (e:Estudiante {id: $id})-[h:HA_CURSADO {estado: 'APROBADO'}]->(c:Curso)
+RETURN c.codigo AS codigo, c.nombre AS nombre, h.periodo AS periodo, h.nota AS nota
+ORDER BY codigo, periodo""",
+        "sql": """SELECT c.codigo, c.nombre, m.periodo, m.nota::float8 AS nota
+FROM matricula m JOIN curso c ON c.codigo = m.codigo_curso
+WHERE m.id_estudiante = %(id)s AND m.estado = 'APROBADO'
+ORDER BY c.codigo COLLATE "C", m.periodo COLLATE "C\"""",
+        "sql_mat": None,
+        "cols": ["codigo", "periodo", "nota"],
+    },
+    {
+        "id": "companeros_1",
+        "titulo": "Compañeros de clase (1 salto)",
+        "tema": "Recorrer relaciones",
+        "pregunta": "¿Con qué estudiantes ha coincidido en cursos, y en cuántos cursos coinciden? (un salto: estudiante → curso → estudiante)",
+        "sujeto": "estudiante",
+        "cypher": """MATCH (e:Estudiante {id: $id})-[:HA_CURSADO]->(c:Curso)<-[:HA_CURSADO]-(a:Estudiante)
+WHERE a <> e
+RETURN a.id AS codigo, a.nombre AS nombre, count(DISTINCT c) AS puntaje
+ORDER BY puntaje DESC, codigo
+LIMIT 20""",
+        "sql": """SELECT s.id_estudiante AS codigo, s.nombre, COUNT(DISTINCT m2.codigo_curso)::float8 AS puntaje
+FROM matricula m1
+JOIN matricula m2 ON m2.codigo_curso = m1.codigo_curso AND m2.id_estudiante <> m1.id_estudiante
+JOIN estudiante s ON s.id_estudiante = m2.id_estudiante
+WHERE m1.id_estudiante = %(id)s
+GROUP BY s.id_estudiante, s.nombre
+ORDER BY puntaje DESC, s.id_estudiante COLLATE "C"
+LIMIT 20""",
+        "sql_mat": None,
+        "cols": ["codigo", "puntaje"],
+    },
+]
+ESCENARIOS = ESCENARIOS + _NUEVOS
+
+# Metadatos para explicar cada prueba con palabras simples (nivel 1 = muy simple … 4 = recorrido profundo)
+META = {
+    "historial_estudiante": (1, "Buscar a una persona y listar sus filas relacionadas.",
+                             "Es el caso más simple. PostgreSQL suele ganar o empatar: con un índice encuentra la fila directo."),
+    "mas_aprobados": (1, "Contar y ordenar sobre TODAS las matrículas.",
+                      "Es una agregación global: no sigue relaciones. Es el terreno natural de las bases relacionales."),
+    "companeros_1": (2, "Seguir un salto: estudiante → curso → otros estudiantes.",
+                     "Un JOIN en SQL, un salto en el grafo. Con pocos datos casi no hay diferencia."),
+    "inscribibles": (2, "Aplicar reglas de negocio: no repetir cursos y exigir prerrequisitos.",
+                     "Mezcla filtros y comprobaciones de relaciones; ambas bases lo resuelven bien."),
+    "rec_intereses": (2, "Combinar intereses del estudiante con las áreas de cada curso.",
+                      "Son dos tablas unidas y sumadas; no requiere recorridos largos."),
+    "rec_historial": (3, "Recomendar cursos parecidos a los aprobados.",
+                      "En el grafo ya existen las relaciones SIMILAR_A; en SQL hay que calcularlas (o guardarlas en curso_similar)."),
+    "rec_otros_programas": (3, "Igual que la recomendación por historial, pero solo de otros programas.",
+                            "Añade un filtro de pertenencia a programa sobre la misma idea de similitud."),
+    "rec_similares": (3, "Encontrar estudiantes parecidos y ver qué aprobaron.",
+                      "Recorre estudiante → curso → estudiante → curso: dos saltos largos que se multiplican."),
+    "cadena_prerreq": (4, "Seguir la cadena de prerrequisitos hasta el final.",
+                       "Es una consulta recursiva: en SQL necesita WITH RECURSIVE; en el grafo es un camino de longitud variable."),
+    "companeros_2": (4, "Compañeros de compañeros: dos saltos.",
+                     "Es el clásico «amigos de amigos». A más datos, los JOIN crecen mucho más rápido que el recorrido del grafo."),
+}
+NIVELES = {1: "Búsqueda simple", 2: "Una relación", 3: "Varias relaciones", 4: "Recorrido profundo"}
+for _e in ESCENARIOS:
+    _n, _que, _espera = META[_e["id"]]
+    _e.update(nivel=_n, nivel_nombre=NIVELES[_n], que_mide=_que, que_esperar=_espera)
+ESCENARIOS.sort(key=lambda e: (e["nivel"], e["titulo"]))
 POR_ID = {e["id"]: e for e in ESCENARIOS}
 
 
