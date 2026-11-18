@@ -98,7 +98,9 @@ def inscribir(body: dict, s: dict = Depends(estudiante_actual)):
     ev = _inscripcion_valida(s["id"], curso)
     if not ev["puede"]:
         dm.fallo(" ".join(ev["motivos"]), 409)
-    db.neo_write(Q.INSCRIBIR, id=s["id"], curso=curso, periodo=config.PERIODO_ACTUAL)
+    r = db.neo_write(Q.INSCRIBIR, id=s["id"], curso=curso, periodo=config.PERIODO_ACTUAL)
+    if not r or not r[0]["inscrito"]:      # otro estudiante tomó el último cupo entre la validación y la escritura
+        dm.fallo("No quedan cupos disponibles.", 409)
     return {"ok": True}
 
 

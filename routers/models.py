@@ -44,7 +44,8 @@ def _pg_modelo() -> dict:
 
 def _una(q: str, **params):
     r = db.neo_read(q, **params)
-    return r[0]["props"] if r else None
+    # las propiedades que empiezan por «_» son internas (p. ej. el bloqueo de inscripción): no son del modelo
+    return {k: v for k, v in r[0]["props"].items() if not k.startswith("_")} if r else None
 
 
 def _neo_modelo() -> dict:
@@ -62,7 +63,9 @@ def _neo_modelo() -> dict:
     nodos = [{"etiqueta": k, **v, "total": conteo["nodos"].get(k, 0), "ejemplo": res["n:" + k]} for k, v in dm.NODOS.items()]
     relaciones = [{"tipo": k, **v, "total": conteo["relaciones"].get(k, 0), "ejemplo": res["r:" + k]}
                   for k, v in dm.RELACIONES.items()]
-    return {"nodos": nodos, "relaciones": relaciones, "restricciones": res["restricciones"], "indices": res["indices"],
+    def limpio(filas):   # Neo4j devuelve null en etiquetas/propiedades de los índices LOOKUP internos
+        return [{**f, "labelsOrTypes": f.get("labelsOrTypes") or [], "properties": f.get("properties") or []} for f in filas]
+    return {"nodos": nodos, "relaciones": relaciones, "restricciones": limpio(res["restricciones"]), "indices": limpio(res["indices"]),
             "cypher_esquema": "\n".join(loaders.NEO_CONSTRAINTS + loaders.NEO_INDEXES)}
 
 

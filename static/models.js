@@ -142,6 +142,13 @@ function armarPg(pg) {
   /* ------------------------------ mitad Neo4j */
 }
 
+/* Los índices LOOKUP internos de Neo4j no tienen etiquetas ni propiedades (vienen vacíos). */
+const sobreQue = (x) => {
+  const et = x.labelsOrTypes || [], pr = x.properties || [];
+  if (!et.length && !pr.length) return x.entityType === 'RELATIONSHIP' ? 'todas las relaciones (índice interno)' : 'todos los nodos (índice interno)';
+  return `${et.join(':')}(${pr.join(', ')})`;
+};
+
 function armarNeo(ne) {
   return h('section', { class: 'mitad neo modelos' }, h('h2', {}, 'Neo4j · modelo de grafo'),
     h('p', { class: 'explica' }, 'La información se guarda como nodos (cosas) y relaciones (conexiones con nombre y dirección) que ya vienen unidas. Para recorrer una conexión no se calcula un JOIN: se sigue el enlace directo entre nodos.'),
@@ -159,8 +166,8 @@ function armarNeo(ne) {
       tabla([{ t: 'Tipo', f: r => h('b', {}, r.tipo) }, { t: 'De → a', f: r => `${r.de} → ${r.a}` }, { t: 'Propiedades', f: r => r.props.join(', ') || '—' }, { t: 'Origen en el modelo relacional', f: r => r.origen },
         { t: 'Cantidad', f: r => fmt(r.total, 0), num: 1 }], ne.relaciones),
       h('h4', {}, 'Restricciones (llaves) e índices (leídos de la base)'),
-      ne.restricciones.length ? tabla([{ t: 'Nombre', f: x => x.name }, { t: 'Tipo', f: x => x.type }, { t: 'Sobre', f: x => `${x.labelsOrTypes.join(':')}(${x.properties.join(', ')})` }], ne.restricciones) : h('p', { class: 'vacio' }, 'Sin restricciones.'),
-      ne.indices.length ? tabla([{ t: 'Nombre', f: x => x.name }, { t: 'Tipo', f: x => x.type }, { t: 'Sobre', f: x => `${x.labelsOrTypes.join(':')}(${x.properties.join(', ')})` }, { t: 'Estado', f: x => x.state }], ne.indices) : null,
+      ne.restricciones.length ? tabla([{ t: 'Nombre', f: x => x.name }, { t: 'Tipo', f: x => x.type }, { t: 'Sobre', f: sobreQue }], ne.restricciones) : h('p', { class: 'vacio' }, 'Sin restricciones.'),
+      ne.indices.length ? tabla([{ t: 'Nombre', f: x => x.name }, { t: 'Tipo', f: x => x.type }, { t: 'Sobre', f: sobreQue }, { t: 'Estado', f: x => x.state }], ne.indices) : null,
       lista(['Una restricción UNIQUE por clave de nodo (id o código) garantiza que no haya duplicados y crea su índice.', 'Los índices solo se usan para ENCONTRAR el nodo de inicio (p. ej. el estudiante E1); desde ahí el recorrido sigue relaciones sin índices.',
         'hc_estado y hc_periodo indexan propiedades de la relación HA_CURSADO para filtrar por estado o periodo.']),
       h('details', {}, h('summary', {}, 'Ver el Cypher que crea las restricciones e índices'), code(ne.cypher_esquema))]);

@@ -78,10 +78,20 @@ RETURN c.codigo AS curso, count(*) AS ocupados"""
 
 # ------------------------------------------------------------------ inscripción
 INSCRIBIR = """MATCH (e:Estudiante {id: $id}), (c:Curso {codigo: $curso})
-MERGE (e)-[h:HA_CURSADO {periodo: $periodo}]->(c)
-SET h.estado = 'EN_CURSO'
-REMOVE h.nota
-RETURN h.estado AS estado"""
+SET c._bloqueo = coalesce(c._bloqueo, 0) + 1
+WITH e, c
+OPTIONAL MATCH (c)-[d:SE_DICTA_EN {periodo: $periodo}]->(:Sede)
+WITH e, c, sum(coalesce(d.cupos, 0)) AS cupos
+OPTIONAL MATCH (:Estudiante)-[o:HA_CURSADO {estado: 'EN_CURSO', periodo: $periodo}]->(c)
+WITH e, c, cupos, count(o) AS ocupados
+FOREACH (_ IN CASE WHEN cupos - ocupados > 0 THEN [1] ELSE [] END |
+  MERGE (e)-[h:HA_CURSADO {periodo: $periodo}]->(c)
+  SET h.estado = 'EN_CURSO'
+  REMOVE h.nota)
+RETURN cupos - ocupados > 0 AS inscrito"""
+# La primera línea (SET c._bloqueo) toma el bloqueo de escritura del curso: dos inscripciones simultáneas al mismo
+# curso se ejecutan una detrás de otra, y la segunda ya ve el cupo que consumió la primera. Así la comprobación
+# de cupos y la escritura son una sola operación atómica.
 RETIRAR = """MATCH (:Estudiante {id: $id})-[h:HA_CURSADO {estado: 'EN_CURSO', periodo: $periodo}]->(:Curso {codigo: $curso})
 DELETE h
 RETURN count(*) AS borradas"""

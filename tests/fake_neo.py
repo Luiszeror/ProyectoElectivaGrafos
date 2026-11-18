@@ -151,9 +151,13 @@ class Fake:
                     n[c] = n.get(c, 0) + 1
             return [{"curso": c, "ocupados": v} for c, v in n.items()]
         if q == Q.INSCRIBIR:
+            cupos = sum(x[3] for x in d.curso_sede if x[0] == p["curso"] and x[2] == per)
+            ocup = sum(1 for m in d.matricula if m[1] == p["curso"] and m[2] == per and m[4] == "EN_CURSO")
+            if cupos - ocup <= 0:
+                return [{"inscrito": False}]
             d.matricula = [m for m in d.matricula if not (m[0] == eid and m[1] == p["curso"] and m[2] == per)]
             d.matricula.append((eid, p["curso"], per, None, "EN_CURSO"))
-            return [{"estado": "EN_CURSO"}]
+            return [{"inscrito": True}]
         if q == Q.RETIRAR:
             antes = len(d.matricula)
             d.matricula = [m for m in d.matricula if not (m[0] == eid and m[1] == p["curso"] and m[2] == per and m[4] == "EN_CURSO")]
@@ -343,7 +347,12 @@ class Fake:
                     for n, l, pp in (("est_id", "Estudiante", "id"), ("cur_cod", "Curso", "codigo"))]
         if q == Q.NEO_INDEXES:
             return [{"name": "est_id", "type": "RANGE", "entityType": "NODE", "labelsOrTypes": ["Estudiante"],
-                     "properties": ["id"], "state": "ONLINE"}]
+                     "properties": ["id"], "state": "ONLINE"},
+                    # Neo4j crea siempre estos dos índices internos y devuelve null en etiquetas y propiedades
+                    {"name": "index_343aff4e", "type": "LOOKUP", "entityType": "NODE", "labelsOrTypes": None,
+                     "properties": None, "state": "ONLINE"},
+                    {"name": "index_f7700477", "type": "LOOKUP", "entityType": "RELATIONSHIP", "labelsOrTypes": None,
+                     "properties": None, "state": "ONLINE"}]
         for et, qq in Q.NEO_MUESTRA_NODO.items():
             if q == qq:
                 tabla = {"Estudiante": d.estudiante, "Docente": d.docente, "Curso": d.curso, "Programa": d.programa,

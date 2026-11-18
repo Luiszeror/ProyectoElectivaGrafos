@@ -332,3 +332,23 @@ def test_modelos_por_mitades(c):
     assert len(pg["tablas"]) >= 15 and len(ne["nodos"]) == 7 and ne["relaciones"] and "error" not in ej
     todo = c.get("/api/admin/modelos", headers=a).json()
     assert set(todo) == {"postgres", "neo4j", "ejemplo"}
+
+
+def test_indices_lookup_sin_etiquetas(c):
+    a = login_admin(c)
+    ne = c.get("/api/admin/modelos/neo4j", headers=a).json()
+    lookup = [i for i in ne["indices"] if i["type"] == "LOOKUP"]
+    assert len(lookup) == 2 and all(i["labelsOrTypes"] == [] and i["properties"] == [] for i in lookup)
+
+
+def test_ultimo_cupo_es_atomico(c):
+    a = login_admin(c)
+    cod = c.post("/api/admin/cursos", json={"codigo": "CUPO1", "nombre": "Un solo cupo", "tipo": "ELECTIVO", "nivel": "Básico",
+                 "areas": [{"id": "A1", "peso": 1}], "programas": [], "requisitos": [], "docentes": [],
+                 "sedes": [{"id": c.get("/api/admin/catalogos", headers=a).json()["sedes"][0]["codigo"], "cupos": 1}]}, headers=a)
+    assert cod.status_code == 200, cod.text
+    t1 = login_est(c, "E1")
+    t2 = login_est(c, "E2")
+    assert c.post("/api/estudiante/inscribir", json={"curso": "CUPO1"}, headers=t1).status_code == 200
+    r = c.post("/api/estudiante/inscribir", json={"curso": "CUPO1"}, headers=t2)
+    assert r.status_code == 409 and "cupos" in r.json()["detail"]
